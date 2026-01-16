@@ -5,6 +5,7 @@
 import numpy as np
 from scipy.stats import spearmanr
 from typing import Dict
+from evaluation import ndcg_at_k
 
 
 def calculate_top_k_hit_ratio(actuals: np.ndarray, predictions: np.ndarray, k: int) -> float:
@@ -184,11 +185,11 @@ def evaluate_predictions(
     prophet_top5_excess = calculate_top_k_excess_return(actuals, prophet_preds, k=5)
     hybrid_top5_excess = calculate_top_k_excess_return(actuals, hybrid_preds, k=5)
     
-    prophet_ndcg3 = calculate_ndcg_at_k(actuals, prophet_preds, k=3)
-    hybrid_ndcg3 = calculate_ndcg_at_k(actuals, hybrid_preds, k=3)
-    
-    prophet_ndcg5 = calculate_ndcg_at_k(actuals, prophet_preds, k=5)
-    hybrid_ndcg5 = calculate_ndcg_at_k(actuals, hybrid_preds, k=5)
+    prophet_ndcg3 = ndcg_at_k(actuals, prophet_preds, k=3)
+    hybrid_ndcg3  = ndcg_at_k(actuals, hybrid_preds,  k=3)
+
+    prophet_ndcg5 = ndcg_at_k(actuals, prophet_preds, k=5)
+    hybrid_ndcg5  = ndcg_at_k(actuals, hybrid_preds,  k=5)
     
     return {
         'prophet_spearman': prophet_spearman,
