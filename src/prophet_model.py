@@ -1,5 +1,5 @@
 """
-Prophet Model Module
+Prophet 모델 모듈
 """
 
 import pandas as pd
@@ -9,7 +9,7 @@ import warnings
 
 
 class ProphetModel:
-    """Prophet baseline model for time series forecasting"""
+    """시계열 예측을 위한 Prophet 베이스라인 모델"""
     
     def __init__(
         self,
@@ -17,14 +17,14 @@ class ProphetModel:
         seasonality_prior_scale: float = 10.0
     ):
         """
-        Initialize Prophet model
+        Prophet 모델 초기화
         
         Parameters:
         -----------
         changepoint_prior_scale : float
-            Flexibility of trend changes
+            추세 변화의 유연성
         seasonality_prior_scale : float
-            Flexibility of seasonality
+            계절성의 유연성
         """
         self.changepoint_prior_scale = changepoint_prior_scale
         self.seasonality_prior_scale = seasonality_prior_scale
@@ -32,25 +32,25 @@ class ProphetModel:
     
     def train(self, sector_data: pd.DataFrame) -> 'ProphetModel':
         """
-        Train Prophet model on sector data
+        섹터 데이터로 Prophet 모델 학습
         
         Parameters:
         -----------
         sector_data : pd.DataFrame
-            Must have 'Date' and 'Close' columns
+            'Date'와 'Close' 컬럼 필수
         
         Returns:
         --------
-        self : trained model
+        self : 학습된 모델
         """
-        # Prepare data for Prophet
+        # Prophet용 데이터 준비
         prophet_df = sector_data[['Date', 'Close']].copy()
         prophet_df.columns = ['ds', 'y']
         
-        # Log transformation
+        # 로그 변환
         prophet_df['y'] = np.log(prophet_df['y'])
         
-        # Create model
+        # 모델 생성
         self.model = Prophet(
             changepoint_prior_scale=self.changepoint_prior_scale,
             seasonality_prior_scale=self.seasonality_prior_scale,
@@ -59,7 +59,7 @@ class ProphetModel:
             yearly_seasonality=True
         )
         
-        # Train
+        # 학습
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             self.model.fit(prophet_df)
@@ -68,19 +68,19 @@ class ProphetModel:
     
     def predict(self, future_dates: pd.DataFrame) -> pd.DataFrame:
         """
-        Make predictions
+        예측 수행
         
         Parameters:
         -----------
         future_dates : pd.DataFrame
-            DataFrame with 'ds' column (dates to predict)
+            'ds' 컬럼이 있는 DataFrame (예측할 날짜)
         
         Returns:
         --------
-        pd.DataFrame : predictions with 'ds' and 'yhat' columns
+        pd.DataFrame : 'ds'와 'yhat' 컬럼이 있는 예측 결과
         """
         if self.model is None:
-            raise ValueError("Model not trained. Call train() first.")
+            raise ValueError("모델이 학습되지 않았습니다. train()을 먼저 호출하세요.")
         
         forecast = self.model.predict(future_dates)
         return forecast[['ds', 'yhat']].copy()
