@@ -63,6 +63,11 @@ print("3. 수익률 기준 클러스터 재매핑")
 print("-" * 80)
 df_industry, cluster_profile = clusterer.remap_cluster_ids(df_industry, cluster_profile)
 
+print("\n" + "-" * 80)
+print("4. 클러스터 해석 (고정 레이블 할당)")
+print("-" * 80)
+interpretations = clusterer.interpret_clusters(df_industry, cluster_profile)
+
 print("\n" + "=" * 80)
 print("재매핑 후 클러스터 프로파일")
 print("=" * 80)

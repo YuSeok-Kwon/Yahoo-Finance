@@ -372,44 +372,61 @@ class IndustryClusterer:
     ) -> Dict[str, Dict]:
         """
         클러스터 해석 및 레이블 할당
-        
+        수익률 순서에 따라 고정된 레이블 할당 (0=공격형, 1=최적형, 2=안정형, 3=주의형)
+
         Parameters:
         -----------
         df_industry : pd.DataFrame
             'cluster' 컬럼이 있는 산업 특성 데이터
         cluster_profile : pd.DataFrame
             profile_clusters에서 생성한 클러스터 프로파일
-        
+
         Returns:
         --------
         Dict : 클러스터 해석 정보
             {
                 'cluster_0': {
-                    'label': '중립/안정',
+                    'label': '공격형(고수익·고위험)',
                     'description': '...',
                     'industries': [...]
                 },
                 ...
             }
         """
+        # 수익률 순서에 따라 고정된 레이블 매핑
+        label_mapping = {
+            0: {
+                'label': '공격형(고수익·고위험)',
+                'description': '최고 수익률, 공격적 성장, 모멘텀 트레이딩에 적합'
+            },
+            1: {
+                'label': '최적형(최적 리스크-보상)',
+                'description': '우수한 위험 조정 수익률, 핵심 포트폴리오 보유 자산'
+            },
+            2: {
+                'label': '안정형(중립/저변동)',
+                'description': '안정적 성과, 포트폴리오 완충재, 리밸런싱 후보'
+            },
+            3: {
+                'label': '주의형(가치 함정)',
+                'description': '낮은 수익률과 높은 낙폭 위험, 회피 또는 언더웨이트'
+            }
+        }
+
         interpretations = {}
-        
+
         for cluster_id in sorted(df_industry['cluster'].unique()):
             profile = cluster_profile.loc[cluster_id]
             industries = df_industry[df_industry['cluster'] == cluster_id]['Industry'].tolist()
-            
+
             return_val = profile['Return_3M']
             vol_val = profile['Volatility_20d']
             mdd_val = profile['MDD']
             sharpe_val = profile['Sharpe_Ratio']
-            
-            label_info = self._label_from_metrics(
-                float(return_val),
-                float(vol_val),
-                float(mdd_val),
-                float(sharpe_val)
-            )
-            
+
+            # 수익률 순서에 따른 고정 레이블 사용
+            label_info = label_mapping.get(cluster_id, label_mapping[3])
+
             interpretations[f'cluster_{cluster_id}'] = {
                 'label': label_info['label'],
                 'description': label_info['description'],
@@ -420,9 +437,9 @@ class IndustryClusterer:
                 'num_industries': len(industries),
                 'industries': industries
             }
-        
+
         print("\n" + "="*80)
-        print("클러스터 해석")
+        print("클러스터 해석 (수익률 기준 정렬)")
         print("="*80)
         for cluster_name, info in interpretations.items():
             print(f"\n{cluster_name.upper()}: {info['label']}")
@@ -431,7 +448,7 @@ class IndustryClusterer:
             print(f"  산업 ({info['num_industries']}개): {', '.join(info['industries'][:5])}...")
             print(f"  설명: {info['description']}")
         print("="*80)
-        
+
         return interpretations
 
 
