@@ -5,7 +5,6 @@
 import numpy as np
 from scipy.stats import spearmanr
 from typing import Dict
-from evaluation import ndcg_at_k
 
 
 def calculate_top_k_hit_ratio(actuals: np.ndarray, predictions: np.ndarray, k: int) -> float:
@@ -90,7 +89,7 @@ def calculate_top_k_excess_return(actuals: np.ndarray, predictions: np.ndarray, 
     return top_k_return - market_average
 
 
-def calculate_ndcg_at_k(actuals: np.ndarray, predictions: np.ndarray, k: int) -> float:
+def ndcg_at_k(actuals: np.ndarray, predictions: np.ndarray, k: int) -> float:
     """
     NDCG@K (Normalized Discounted Cumulative Gain)
     
