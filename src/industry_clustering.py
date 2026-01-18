@@ -24,7 +24,7 @@ class IndustryClusterer:
     def __init__(self, n_clusters: int = 4, random_state: int = 42):
         """
         인더스트리 클러스터러 초기화
-        
+
         Parameters:
         -----------
         n_clusters : int
@@ -36,7 +36,7 @@ class IndustryClusterer:
         self.random_state = random_state
         self.kmeans = None
         self.scaler = None
-        self.feature_cols = ['Return_3M', 'Volatility_20d', 'MDD']
+        self.feature_cols = ['Return_Period', 'Volatility_20d', 'MDD']
         self._cluster_id_mapped = False
     
     def extract_industry_features(
@@ -120,7 +120,7 @@ class IndustryClusterer:
             industry_features.append({
                 'Industry': industry,
                 'Sector': sector,
-                'Return_3M': return_3m,
+                'Return_Period': return_3m,
                 'Volatility_20d': volatility_20d,
                 'MDD': mdd,
                 'Sharpe_Ratio': sharpe_ratio,
@@ -212,16 +212,16 @@ class IndustryClusterer:
             ranks = series.rank(ascending=True, method='first')
             return (n_clusters + 1) - ranks
 
-        scores["공격형(고수익·고위험)"] = high_score(cluster_profile['Return_3M']) + high_score(
+        scores["공격형(고수익·고위험)"] = high_score(cluster_profile['Return_Period']) + high_score(
             cluster_profile['Volatility_20d']
         )
         scores["최적 리스크-보상"] = high_score(cluster_profile['Sharpe_Ratio']) + high_score(
             cluster_profile['MDD']
         )
-        scores["중립/안정"] = low_score(cluster_profile['Return_3M'].abs()) + low_score(
+        scores["중립/안정"] = low_score(cluster_profile['Return_Period'].abs()) + low_score(
             cluster_profile['Volatility_20d']
         )
-        scores["가치 함정"] = low_score(cluster_profile['Return_3M']) + low_score(
+        scores["가치 함정"] = low_score(cluster_profile['Return_Period']) + low_score(
             cluster_profile['MDD']
         )
         return scores
@@ -232,38 +232,85 @@ class IndustryClusterer:
         cluster_profile: pd.DataFrame
     ) -> pd.DataFrame:
         """
-        클러스터 번호를 수익률 기준으로 정렬 매핑
-        0=최고수익, 1=두번째, 2=세번째, 3=최저수익
+        샤프 비율 구간 기반 클러스터 레이블링 (5개 클러스터)
+        각 산업을 개별 지표 기준으로 직접 할당
+        0=고수익·고위험, 1=강력매수, 2=안정형/중립, 3=저수익·고위험, 4=관망/주의
         """
-        # Return_3M 기준 내림차순 정렬
-        sorted_clusters = cluster_profile.sort_values('Return_3M', ascending=False)
-
-        # 수익률 순위대로 0, 1, 2, 3 매핑
-        mapping = {}
-        for new_id, old_id in enumerate(sorted_clusters.index):
-            mapping[old_id] = new_id
-
-        # 매핑 적용
         df_industry = df_industry.copy()
-        df_industry['cluster'] = df_industry['cluster'].map(mapping)
-        cluster_profile = cluster_profile.rename(index=mapping).sort_index()
 
-        print("\n클러스터 재매핑 (수익률 기준):")
-        for new_id in range(len(sorted_clusters)):
-            return_val = cluster_profile.loc[new_id, 'Return_3M']
-            print(f"  Cluster {new_id}: Return_3M = {return_val:.2%}")
+        # 각 산업을 개별적으로 샤프 비율 구간에 따라 클러스터 할당
+        new_clusters = []
+        for idx, row in df_industry.iterrows():
+            sharpe = row['Sharpe_Ratio']
+            vol = row['Volatility_20d']
+            ret = row['Return_Period']
+
+            # 샤프 비율 구간별 레이블 결정
+            if sharpe >= 1.5 and vol < 0.40:
+                # 강력 매수: 높은 샤프 + 관리 가능한 변동성 (40% 미만)
+                cluster = 1  # 강력 매수
+            elif (sharpe >= 1.0 and vol >= 0.30 and ret >= 0.12) or (sharpe >= 1.5 and vol >= 0.40):
+                # 고수익·고위험: (샤프 1.0+ & 변동성 30%+ & 수익률 12%+) 또는 (샤프는 높지만 변동성이 40% 이상)
+                cluster = 0  # 고수익·고위험
+            elif 0.5 <= sharpe < 1.5 and vol < 0.25:
+                # 안정형: 샤프 0.5~1.5 + 낮은 변동성
+                cluster = 2  # 안정형/중립
+            elif sharpe >= 0:
+                # 나머지 양수 샤프: 변동성 대비 수익률이 낮거나 수익률 자체가 낮음
+                cluster = 3  # 저수익·고위험
+            else:  # sharpe < 0
+                cluster = 4  # 관망/주의
+
+            new_clusters.append(cluster)
+
+        df_industry['cluster'] = new_clusters
+
+        # 새로운 cluster_profile 재계산
+        cluster_profile = df_industry.groupby('cluster')[self.feature_cols].mean()
+        cluster_profile.columns = ['Return_Period', 'Volatility_20d', 'MDD']
+
+        # Sharpe ratio 재계산
+        sharpe_ratios = []
+        for cluster_id in cluster_profile.index:
+            ret = cluster_profile.at[cluster_id, 'Return_Period']
+            vol = cluster_profile.at[cluster_id, 'Volatility_20d']
+            sharpe = ret / vol if vol != 0 else 0
+            sharpe_ratios.append(sharpe)
+        cluster_profile['Sharpe_Ratio'] = sharpe_ratios
+
+        print("\n클러스터 재매핑 (샤프 비율 구간 기반):")
+        for cluster_id in sorted(df_industry['cluster'].unique()):
+            if cluster_id in cluster_profile.index:
+                sharpe_val = cluster_profile.at[cluster_id, 'Sharpe_Ratio']
+                return_val = cluster_profile.at[cluster_id, 'Return_Period']
+                vol_val = cluster_profile.at[cluster_id, 'Volatility_20d']
+                mdd_val = cluster_profile.at[cluster_id, 'MDD']
+
+                # 레이블 결정 기준 표시
+                if cluster_id == 1:
+                    criteria = f"Sharpe >= 1.5 && Vol < 40%"
+                elif cluster_id == 0:
+                    criteria = f"고수익·고위험 (Sharpe >= 1.0 || 고변동성)"
+                elif cluster_id == 2:
+                    criteria = f"0.5 <= Sharpe < 1.5 && Vol < 25%"
+                elif cluster_id == 3:
+                    criteria = f"Sharpe >= 0 (저수익)"
+                else:  # 4
+                    criteria = f"Sharpe < 0"
+
+                print(f"  Cluster {cluster_id}: Sharpe={sharpe_val:6.2f} | Return={return_val:7.2%} | Vol={vol_val:6.2%} | MDD={mdd_val:7.2%} ({criteria})")
 
         return df_industry, cluster_profile
 
     def profile_clusters(self, df_industry: pd.DataFrame) -> pd.DataFrame:
         """
         클러스터 프로파일 생성 (클러스터별 특성 평균)
-        
+
         Parameters:
         -----------
         df_industry : pd.DataFrame
             'cluster' 컬럼이 있는 산업 특성 데이터
-        
+
         Returns:
         --------
         pd.DataFrame : 클러스터 프로파일
@@ -274,15 +321,16 @@ class IndustryClusterer:
             .mean()
             .round(4)
         )
-        
-        cluster_profile = cluster_profile.sort_values('Return_3M', ascending=False)
-        
+
+        # cluster_id 순서대로 정렬 (0, 1, 2, 3)
+        cluster_profile = cluster_profile.sort_index()
+
         print("\n" + "="*80)
-        print("클러스터 프로파일 (수익률 기준 정렬)")
+        print("클러스터 프로파일")
         print("="*80)
         print(cluster_profile)
         print("="*80)
-        
+
         return cluster_profile
 
     def _label_from_metrics(
@@ -329,7 +377,7 @@ class IndustryClusterer:
         for cluster_id in cluster_profile.index:
             profile = cluster_profile.loc[cluster_id]
             label_info = self._label_from_metrics(
-                float(profile['Return_3M']),
+                float(profile['Return_Period']),
                 float(profile['Volatility_20d']),
                 float(profile['MDD']),
                 float(profile['Sharpe_Ratio'])
@@ -337,14 +385,14 @@ class IndustryClusterer:
             labeled_clusters.append({
                 'cluster_id': cluster_id,
                 'label': label_info['label'],
-                'return_3m': float(profile['Return_3M']),
+                'return_period': float(profile['Return_Period']),
                 'volatility_20d': float(profile['Volatility_20d'])
             })
 
         labeled_clusters.sort(
             key=lambda row: (
                 label_order.get(row['label'], len(label_order)),
-                -row['return_3m'],
+                -row['return_period'],
                 -row['volatility_20d']
             )
         )
@@ -393,23 +441,27 @@ class IndustryClusterer:
                 ...
             }
         """
-        # 수익률 순서에 따라 고정된 레이블 매핑
+        # 5개 클러스터 레이블 매핑
         label_mapping = {
             0: {
-                'label': '공격형(고수익·고위험)',
-                'description': '최고 수익률, 공격적 성장, 모멘텀 트레이딩에 적합'
+                'label': '고수익·고위험',
+                'description': '높은 변동성 + 양의 샤프 비율, 공격적 투자 성향에 적합'
             },
             1: {
-                'label': '최적형(최적 리스크-보상)',
-                'description': '우수한 위험 조정 수익률, 핵심 포트폴리오 보유 자산'
+                'label': '강력 매수',
+                'description': '최고 샤프 비율, 최적의 위험 조정 수익률, 핵심 포트폴리오 자산'
             },
             2: {
-                'label': '안정형(중립/저변동)',
-                'description': '안정적 성과, 포트폴리오 완충재, 리밸런싱 후보'
+                'label': '안정형/중립',
+                'description': '낮은 변동성과 안정적 성과, 포트폴리오 완충재'
             },
             3: {
-                'label': '주의형(가치 함정)',
-                'description': '낮은 수익률과 높은 낙폭 위험, 회피 또는 언더웨이트'
+                'label': '저수익·고위험',
+                'description': '높은 변동성 + 낮은/음의 샤프 비율, 투자 주의 필요'
+            },
+            4: {
+                'label': '관망/주의',
+                'description': '최저 샤프 비율, 높은 리스크 대비 낮은 수익, 투자 회피 권장'
             }
         }
 
@@ -419,7 +471,7 @@ class IndustryClusterer:
             profile = cluster_profile.loc[cluster_id]
             industries = df_industry[df_industry['cluster'] == cluster_id]['Industry'].tolist()
 
-            return_val = profile['Return_3M']
+            return_val = profile['Return_Period']
             vol_val = profile['Volatility_20d']
             mdd_val = profile['MDD']
             sharpe_val = profile['Sharpe_Ratio']
@@ -430,7 +482,7 @@ class IndustryClusterer:
             interpretations[f'cluster_{cluster_id}'] = {
                 'label': label_info['label'],
                 'description': label_info['description'],
-                'return_3m': float(return_val),
+                'return_period': float(return_val),
                 'volatility_20d': float(vol_val),
                 'mdd': float(mdd_val),
                 'sharpe_ratio': float(sharpe_val),
@@ -439,12 +491,12 @@ class IndustryClusterer:
             }
 
         print("\n" + "="*80)
-        print("클러스터 해석 (수익률 기준 정렬)")
+        print("클러스터 해석")
         print("="*80)
-        for cluster_name, info in interpretations.items():
-            print(f"\n{cluster_name.upper()}: {info['label']}")
-            print(f"  수익률: {info['return_3m']:.2%}, 변동성: {info['volatility_20d']:.2%}, MDD: {info['mdd']:.2%}")
-            print(f"  샤프: {info['sharpe_ratio']:.2f}")
+        for cluster_id in sorted(interpretations.keys()):
+            info = interpretations[cluster_id]
+            print(f"\n{cluster_id.upper()}: {info['label']}")
+            print(f"  샤프: {info['sharpe_ratio']:.2f} | 수익률: {info['return_period']:.2%} | 변동성: {info['volatility_20d']:.2%} | MDD: {info['mdd']:.2%}")
             print(f"  산업 ({info['num_industries']}개): {', '.join(info['industries'][:5])}...")
             print(f"  설명: {info['description']}")
         print("="*80)
@@ -508,7 +560,7 @@ class IndustryClusterer:
         for cluster_id in sorted(df_industry['cluster'].unique()):
             by_cluster[f'cluster_{cluster_id}'] = df_industry[
                 df_industry['cluster'] == cluster_id
-            ].sort_values('Return_3M', ascending=False)
+            ].sort_values('Return_Period', ascending=False)
         
         return {
             'industry_features': df_industry,
