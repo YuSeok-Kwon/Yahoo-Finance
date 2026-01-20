@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- 작업 식별자 -->
+    <key>Label</key>
+    <string>com.yahoofinance.daily</string>
+
+    <!-- 실행할 프로그램 -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/yu_seok/Documents/workspace/nbCamp/Project/Yahoo Finance/automation/run_daily_pipeline.sh</string>
+    </array>
+
+    <!-- 작업 디렉토리 -->
+    <key>WorkingDirectory</key>
+    <string>/Users/yu_seok/Documents/workspace/nbCamp/Project/Yahoo Finance</string>
+
+    <!-- 실행 시간 설정: 매일 오전 9시 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- 표준 출력 로그 -->
+    <key>StandardOutPath</key>
+    <string>/Users/yu_seok/Documents/workspace/nbCamp/Project/Yahoo Finance/logs/stdout.log</string>
+
+    <!-- 표준 에러 로그 -->
+    <key>StandardErrorPath</key>
+    <string>/Users/yu_seok/Documents/workspace/nbCamp/Project/Yahoo Finance/logs/stderr.log</string>
+
+    <!-- 시스템 부팅 시 자동 실행 (선택사항) -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- 재시작 설정 -->
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>

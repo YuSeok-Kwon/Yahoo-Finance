@@ -14,7 +14,7 @@ class MultiHorizonPredictor:
     """
     Prophet + XGBoost 하이브리드 모델을 사용한 멀티 호라이즌 섹터 예측
     """
-    
+
     HORIZONS = {
         '1d': 1,
         '3d': 3,
