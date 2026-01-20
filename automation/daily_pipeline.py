@@ -22,6 +22,17 @@ from src import MultiHorizonPredictor, IndustryClusterer
 class DailyPipeline:
     """일일 자동화 파이프라인"""
 
+    # Horizon 한글 이름 매핑
+    HORIZON_NAMES = {
+        '1d': '초단타',
+        '3d': '단타',
+        '1w': '스윙',
+        '1m': '단기투자',
+        '1q': '중기투자',
+        '6m': '중장기투자',
+        '1y': '장기투자'
+    }
+
     def __init__(self, config: dict = None, config_file: str = None):
         """
         Parameters:
@@ -248,12 +259,12 @@ class DailyPipeline:
         date_str = datetime.now().strftime('%Y%m%d')
 
         for horizon_name, clustering_result in clustering_results.items():
-            # Horizon 일수 가져오기
-            horizon_days = multi_horizon_results[horizon_name]['horizon_days']
+            # Horizon 한글 이름 가져오기
+            horizon_name_kr = self.HORIZON_NAMES.get(horizon_name, horizon_name)
 
             # 1. 전체 산업 특성
             df_industry = clustering_result['industry_features'].copy()
-            df_industry.insert(0, 'Horizon', horizon_days)
+            df_industry.insert(0, 'Horizon', horizon_name_kr)
             industry_filename = os.path.join(
                 self.config['output_dir'],
                 f"{date_str}_{horizon_name}_industry_features.csv"
@@ -264,7 +275,7 @@ class DailyPipeline:
             # 2. 클러스터별 파일
             for cluster_name, df_cluster in clustering_result['by_cluster'].items():
                 df_cluster_copy = df_cluster.copy()
-                df_cluster_copy.insert(0, 'Horizon', horizon_days)
+                df_cluster_copy.insert(0, 'Horizon', horizon_name_kr)
                 cluster_filename = os.path.join(
                     self.config['output_dir'],
                     f"{date_str}_{horizon_name}_{cluster_name}.csv"
