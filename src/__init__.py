@@ -10,6 +10,8 @@ from .evaluation import evaluate_predictions, print_metrics, print_sector_rankin
 from .backtest import run_backtest, run_multiple_backtests
 from .multi_horizon_predictor import MultiHorizonPredictor
 from .industry_clustering import IndustryClusterer
+from .hyperparameter_tuning import GridSearchTuner
+from .shap_explainer import ShapExplainer
 
 __all__ = [
     'load_data',
@@ -23,5 +25,7 @@ __all__ = [
     'run_backtest',
     'run_multiple_backtests',
     'MultiHorizonPredictor',
-    'IndustryClusterer'
+    'IndustryClusterer',
+    'GridSearchTuner',
+    'ShapExplainer',
 ]

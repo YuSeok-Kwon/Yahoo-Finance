@@ -147,6 +147,39 @@ class XGBoostCorrector:
         """
         if self.model is None or self.feature_cols is None:
             raise ValueError("모델이 학습되지 않았습니다. train()을 먼저 호출하세요.")
-        
+
         X = test_features[self.feature_cols].values
         return self.model.predict(X)
+
+    def explain_shap(self, features: pd.DataFrame, save_dir: str = '.') -> 'ShapExplainer':
+        """
+        SHAP 기반 모델 해석 수행
+
+        Parameters:
+        -----------
+        features : pd.DataFrame
+            특징 DataFrame (create_features 결과)
+        save_dir : str
+            시각화 저장 디렉토리
+
+        Returns:
+        --------
+        ShapExplainer : SHAP 분석 결과가 담긴 객체
+        """
+        if self.model is None or self.feature_cols is None:
+            raise ValueError("모델이 학습되지 않았습니다. train()을 먼저 호출하세요.")
+
+        from .shap_explainer import ShapExplainer
+        import os
+
+        explainer = ShapExplainer()
+        X = features[self.feature_cols].values
+        explainer.explain(self.model, X, self.feature_cols)
+
+        explainer.summary_plot(os.path.join(save_dir, 'shap_summary.png'))
+
+        importance_df = explainer.feature_importance_df()
+        print("\n특징 중요도 (SHAP):")
+        print(importance_df.to_string(index=False))
+
+        return explainer

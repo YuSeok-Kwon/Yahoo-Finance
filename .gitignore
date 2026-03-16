@@ -55,6 +55,7 @@ logs/*.log
 # Temporary files
 temp_*
 test_*
+!tests/test_*
 *_old.*
 *_backup.*
 *.tmp
