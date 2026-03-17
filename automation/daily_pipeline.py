@@ -218,7 +218,9 @@ class DailyPipeline:
         """호라이즌별 클러스터링"""
         clusterer = IndustryClusterer(
             n_clusters=self.config['n_clusters'],
-            random_state=42
+            random_state=42,
+            sharpe_thresholds=self.config.get('sharpe_thresholds'),
+            vol_thresholds=self.config.get('vol_thresholds'),
         )
 
         clustering_results = {}

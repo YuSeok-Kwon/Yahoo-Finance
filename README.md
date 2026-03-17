@@ -82,20 +82,21 @@ S&P 500 시계열 데이터를 활용하여 멀티 호라이즌(1D~1Y) 섹터 �
 | 지정학적 쇼크로 급락 | XGBoost | 비선형 급변동 잔차 학습 → 예측 보정 |
 | 장기 추세 무너지기 직전 | 단기 호라이즌(1D/3D) | 로테이션 신호 선제 포착 → 빠른 태세 전환 |
 
-### Classification: KMeans 클러스터링 기반 종목 분류
+### Classification: KMeans 클러스터링 기반 종목 분류 (하이브리드)
 
-선정된 주도 섹터 내에서 산업을 **Risk-Reward** 기준으로 4그룹 분류:
+선정된 주도 섹터 내에서 산업을 **Risk-Reward** 기준으로 5그룹 분류 (하이브리드: KMeans + 센트로이드 규칙 레이블링):
 
-| 클러스터 | 정의 | 조건 | 투자 전략 |
-|----------|------|------|-----------|
+| 클러스터 | 정의 | 센트로이드 조건 | 투자 전략 |
+|----------|------|----------------|-----------|
 | Strong Buy | Low Risk, High Return | Sharpe >= 1.5, Vol < 40% | 핵심 편입 |
 | Aggressive | High Risk, High Return | Sharpe >= 1.0, Vol >= 30%, Return >= 12% | 모멘텀 추종 |
 | Stable | Mid Return, Low Vol | 0.5 <= Sharpe < 1.5, Vol < 25% | 하락장 방어 |
-| Value Trap | Low Return, High MDD | 나머지 | 편입 제외 |
+| Low Return | Low Return, High Risk | Sharpe >= 0 (나머지) | 투자 주의 |
+| Warning | Negative Sharpe | Sharpe < 0 | 편입 제외 |
 
 - **피처:** Return_Period, Volatility_20d, MDD
-- **스케일링:** StandardScaler → KMeans(k=4, seed=42)
-- **해석:** 클러스터 ID를 지표 기준으로 재매핑하여 일관된 레이블 부여
+- **스케일링:** StandardScaler → KMeans(k=5, seed=42)
+- **해석:** KMeans가 그룹 경계를 결정하고, 센트로이드 지표 기반 규칙이 레이블만 부여 (하이브리드)
 
 ### Verification: 기술적 지표 기반 안정성 검증
 
@@ -318,6 +319,8 @@ CSV 출력 → Tableau 대시보드 자동 갱신                          ✅
 | `top_k` | 3 | 호라이즌별 상위 섹터 수 |
 | `train_years` | 4 | 학습 데이터 기간 (연) |
 | `n_clusters` | 5 | KMeans 클러스터 수 |
+| `sharpe_thresholds` | {strong_buy: 1.5, aggressive: 1.0, stable: 0.5, warning: 0.0} | 센트로이드 Sharpe 임계값 |
+| `vol_thresholds` | {strong_buy_max: 0.40, aggressive_min: 0.30, stable_max: 0.25} | 센트로이드 변동성 임계값 |
 
 ---
 
