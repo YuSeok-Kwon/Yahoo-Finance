@@ -8,7 +8,7 @@
 
 ### 목표
 
-S&P 500 시계열 데이터를 활용하여 멀티 호라이즌(1D~1Y) 섹터 예측 → KMeans 클러스터링 기반 종목 분류 → 기술적 지표 검증의 **3단 필터링 시스템**을 구축한다.
+S&P 500 시계열 데이터를 활용하여 멀티 호라이즌(1D~1Y) 섹터 예측 → **3개 전략그룹(단타/스윙/장기투자) 앙상블** → KMeans 클러스터링 기반 종목 분류 → 기술적 지표 검증의 **3단 필터링 시스템**을 구축한다.
 
 ---
 
@@ -28,6 +28,16 @@ S&P 500 시계열 데이터를 활용하여 멀티 호라이즌(1D~1Y) 섹터 �
 | H2: XGBoost 잔차 보정으로 예측 순위 개선 | 2025 홀드아웃 | NDCG@5 0.74, Top-5 초과수익률 +3.68% | 채택 |
 | H3: 멀티 호라이즌 앙상블이 단일 시점보다 안정적 | Voting 방식 교차 검증 | 2개 이상 호라이즌 공통 추천 섹터의 변동성 축소 | 채택 |
 
+### 전략그룹 앙상블 매핑
+
+7개 호라이즌 예측을 3개 전략그룹으로 병합하여 사용자에게 명확한 투자 시계를 제공한다.
+
+| 전략그룹 | 소속 호라이즌 | Voting 규칙 | lookback (일) |
+|----------|-------------|-------------|--------------|
+| **단타** | 1D + 3D | union (1개 이상), 2개 공통 시 우선 | 75 |
+| **스윙** | 1W + 1M | union (1개 이상), 2개 공통 시 우선 | 105 |
+| **장기투자** | 1Q + 6M + 1Y | 2개 이상 공통 시 포함 | 180 |
+
 > 2023년 블랙스완 구간(전쟁·ChatGPT 열풍)에서 Spearman -0.28 기록. 두 모델 모두 한계를 보였으나, 이는 **과적합 없이 시장 이상을 정직하게 반영**한 증거. 2024~2025년 시장 정상화 후 예측력 회복으로 **회복 탄력성** 확인.
 
 ---
@@ -44,7 +54,7 @@ S&P 500 시계열 데이터를 활용하여 멀티 호라이즌(1D~1Y) 섹터 �
 
 ### 솔루션 프레임워크
 
-전체 시스템은 **Prediction(예측) → Classification(분류) → Verification(검증)** 의 3단계로 연결된다. 1등 종목을 맞히는 것보다 상승 확률 높은 Top-N 그룹을 선별하는 전략이 더 유효하며, 단일 모델보다 하이브리드 구조가 블랙스완 이후 회복 탄력성에서 우위를 보인다.
+전체 시스템은 **Prediction(예측) → Classification(분류) → Personalization(개인화) → Verification(검증)** 의 4단계로 연결된다. 1등 종목을 맞히는 것보다 상승 확률 높은 Top-N 그룹을 선별하는 전략이 더 유효하며, 단일 모델보다 하이브리드 구조가 블랙스완 이후 회복 탄력성에서 우위를 보인다.
 
 ---
 
@@ -66,6 +76,9 @@ S&P 500 시계열 데이터를 활용하여 멀티 호라이즌(1D~1Y) 섹터 �
     ▼
 [Multi-Horizon] 7개 시간 지평(1D/3D/1W/1M/1Q/6M/1Y) 독립 예측
     │
+    ▼
+[Strategy Group] 3개 전략그룹 앙상블 (단타=1D+3D / 스윙=1W+1M / 장기투자=1Q+6M+1Y)
+    │ 그룹 내 Voting + 평균 랭킹
     ▼
 [Ranking] Score = z(prediction) + γ×z(confidence)  (γ=0.25)
 ```
@@ -97,6 +110,35 @@ S&P 500 시계열 데이터를 활용하여 멀티 호라이즌(1D~1Y) 섹터 �
 - **피처:** Return_Period, Volatility_20d, MDD
 - **스케일링:** StandardScaler → KMeans(k=5, seed=42)
 - **해석:** KMeans가 그룹 경계를 결정하고, 센트로이드 지표 기반 규칙이 레이블만 부여 (하이브리드)
+
+### Personalization: 투자자 성향별 맞춤 추천
+
+클러스터링 결과를 투자자 성향(공격형/균형형/안정형)에 맞게 **3단계 필터링 + 가중 랭킹**으로 개인화 추천을 제공한다.
+
+**3단계 추천 프레임워크:**
+
+```
+[1단계 진입 필터] 클러스터 레이블 + 호라이즌 일치도(3개+) 기반 필터링
+    │
+    ▼
+[2단계 가중 랭킹] 성향별 composite score = Σ(weight × z-score(지표))
+    │   공격형: 0.3×z(Sharpe) + 0.5×z(Return) + 0.2×z(-Vol)
+    │   균형형: 0.5×z(Sharpe) + 0.3×z(Return) + 0.2×z(MDD방어)
+    │   안정형: 0.3×z(Sharpe) + 0.2×z(Return) + 0.5×z(MDD방어)
+    │
+    ▼
+[3단계 성향 필터] MDD·Vol·Sharpe 임계값 적용 + 섹터 분산도 보장
+```
+
+| 프로파일 | 허용 클러스터 | 랭킹 핵심 가중치 | MDD 제한 | Vol 제한 |
+|----------|-------------|-----------------|---------|---------|
+| **공격형** | 고수익·고위험 + 강력매수 | Return **50%** | 없음 | 없음 |
+| **균형형** | 고수익·고위험 + 강력매수 + 안정형 | Sharpe **50%** | > -20% | 없음 |
+| **안정형** | 강력매수 + 안정형 | MDD방어 **50%** | > -15% | < 25% |
+
+- **z-score 정규화:** 지표 간 스케일 차이를 해소하여 공정한 가중합산
+- **composite_score:** 내부 랭킹 기준으로 사용, 리포트에는 Sharpe/Return/MDD 원본값 표시
+- **Tableau 연동:** `export_unified_for_tableau()`로 전체 산업 + 성향별 추천 정보를 단일 CSV로 출력
 
 ### Verification: 기술적 지표 기반 안정성 검증
 
@@ -215,7 +257,7 @@ XGBoost 잔차 보정 모델이 어떤 특징에 기반하여 섹터를 추천�
 
 ### 1. 단위 테스트 (pytest)
 
-모든 핵심 모듈에 대한 단위 테스트를 `tests/` 디렉토리에 구현하였다. 총 **30개 테스트 전체 통과**.
+모든 핵심 모듈에 대한 단위 테스트를 `tests/` 디렉토리에 구현하였다. 총 **68개 테스트 전체 통과**.
 
 ```bash
 python -m pytest tests/ -v
@@ -226,9 +268,10 @@ python -m pytest tests/ -v
 | `test_evaluation.py` | 8 | Hit Ratio 완벽/최악 예측, NDCG 완벽/랜덤 순위, 초과수익, 반환 키 검증 |
 | `test_xgboost_model.py` | 5 | 특징 컬럼 생성, NaN 제거, 예측 shape/범위, 미학습 모델 에러 |
 | `test_hybrid_model.py` | 4 | confidence 범위(0~1), alpha 효과, 학습-예측 파이프라인, 출력 컬럼 |
-| `test_multi_horizon_predictor.py` | 5 | z-정규화 랭킹 합 ≈ 0, gamma 효과, voting/union 통합 |
-| `test_industry_clustering.py` | 4 | 클러스터 수/범위, 특징 추출 컬럼, 프로파일 shape |
+| `test_multi_horizon_predictor.py` | 9 | z-정규화 랭킹 합 ≈ 0, gamma 효과, voting/union 통합, 전략그룹 앙상블 |
+| `test_industry_clustering.py` | 10 | 클러스터 수/범위, 특징 추출 컬럼, 프로파일 shape, 레이블 리맵, 임계값, 해석 |
 | `test_data_loader.py` | 3 | 반환 컬럼, 학습/테스트 데이터 누수 없음, 연도 필터링 |
+| `test_investor_profiler.py` | 24 | 진입 필터(Cluster/호라이즌), 성향별 가중 랭킹(composite_score), MDD·Vol·Sharpe 필터, 섹터 분산도, Tableau 출력 |
 
 - **공통 fixture** (`conftest.py`): 100일치 샘플 섹터 데이터, Prophet 출력, 학습된 XGBoostCorrector, 임시 CSV 등 재사용 가능한 테스트 데이터 제공
 
@@ -293,7 +336,7 @@ explainer.waterfall_plot(idx=0, save_path='./output/shap_waterfall.png')
 | 평가 | Spearman, NDCG@K, Top-K Hit Ratio, SciPy |
 | 모델 해석 | SHAP (TreeExplainer, summary/waterfall plot) |
 | 하이퍼파라미터 | GridSearch (α × γ 36개 조합 자동 탐색) |
-| 테스트 | pytest (30개 단위 테스트) |
+| 테스트 | pytest (68개 단위 테스트) |
 | 시각화 | Tableau, matplotlib |
 | 자동화 | launchd (macOS), config.json 설정 분리 |
 | 로깅 | Python logging, 일별 로그 파일 관리 |
@@ -305,9 +348,11 @@ yfinance API → 최신 주가 데이터 자동 수집 (7일 롤링)           �
 stock_features_clean.csv와 병합                                ✅
 섹터별 Prophet+XGBoost 하이브리드 모델 학습                    ✅
 7개 호라이즌 멀티 예측 실행                                    ✅
-Ranking Score 산출 → Top-3 섹터 선정                           ✅
+3개 전략그룹 앙상블 병합 (단타/스윙/장기투자)                  ✅
+Ranking Score 산출 → 그룹별 Top-3 섹터 선정                    ✅
 KMeans 클러스터링 → 산업별 Risk-Reward 분류                    ✅
-CSV 출력 → Tableau 대시보드 자동 갱신                          ✅
+투자자 성향별 추천 (composite score 가중 랭킹)                 ✅
+CSV 출력 (통합 industry_features) → Tableau 대시보드 자동 갱신 ✅
 ```
 
 ### 주요 설정 (config.json)
@@ -318,9 +363,11 @@ CSV 출력 → Tableau 대시보드 자동 갱신                          ✅
 | `gamma` | 0.25 | 랭킹 시 신뢰도 반영 가중치 (GridSearch 최적) |
 | `top_k` | 3 | 호라이즌별 상위 섹터 수 |
 | `train_years` | 4 | 학습 데이터 기간 (연) |
+| `strategy_group_lookback_map` | {단타: 75, 스윙: 105, 장기투자: 180} | 전략그룹별 클러스터링 lookback 기간 (일) |
 | `n_clusters` | 5 | KMeans 클러스터 수 |
 | `sharpe_thresholds` | {strong_buy: 1.5, aggressive: 1.0, stable: 0.5, warning: 0.0} | 센트로이드 Sharpe 임계값 |
 | `vol_thresholds` | {strong_buy_max: 0.40, aggressive_min: 0.30, stable_max: 0.25} | 센트로이드 변동성 임계값 |
+| `investor_profiles.*.ranking_weights` | 프로파일별 상이 | 성향별 composite score 가중치 (sharpe/return/neg_vol/neg_mdd) |
 
 ---
 
@@ -339,6 +386,7 @@ Yahoo Finance/
 │   ├── hybrid_model.py              #   하이브리드 모델 (Prophet+XGBoost)
 │   ├── multi_horizon_predictor.py   #   멀티 호라이즌 예측 엔진
 │   ├── industry_clustering.py       #   KMeans 산업 클러스터링
+│   ├── investor_profiler.py          #   투자자 성향별 추천 (composite score 가중 랭킹)
 │   ├── evaluation.py                #   평가 지표 (NDCG, Spearman, Hit Ratio)
 │   ├── backtest.py                  #   백테스트 프레임워크
 │   ├── hyperparameter_tuning.py     #   GridSearch 하이퍼파라미터 튜닝
@@ -350,6 +398,7 @@ Yahoo Finance/
 │   ├── test_hybrid_model.py         #   HybridModel 테스트
 │   ├── test_multi_horizon_predictor.py  # MultiHorizonPredictor 테스트
 │   ├── test_industry_clustering.py  #   IndustryClusterer 테스트
+│   ├── test_investor_profiler.py    #   InvestorProfiler 테스트 (성향별 가중 랭킹)
 │   └── test_data_loader.py          #   data_loader 테스트
 ├── notebooks/                       # 분석 노트북
 │   ├── Multi_Horizon_Industry_Pipeline.ipynb  # 멀티 호라이즌 파이프라인
@@ -390,6 +439,7 @@ Yahoo Finance/
 | `Docs/PDF/Data_Dictionary.pdf` | 전체 변수 명세 |
 | `Docs/PDF/Data_Processing_Log.pdf` | 전처리 로그 |
 | `Docs/Rule.md` | 프로젝트 규칙 및 컨벤션 |
+| `Docs/Tableau_투자자성향_구현가이드.md` | Tableau 성향 추천 대시보드 구현 가이드 |
 | `Docs/주식 도메인 지식 완벽 가이드.md` | 주식 도메인 지식 정리 |
 
 ---
@@ -406,4 +456,5 @@ Yahoo Finance/
 
 - **판단 기준 제공:** 감정적 매매를 데이터 기반 의사결정으로 전환
 - **리스크 가시화:** 클러스터링을 통해 Risk-Reward 프로파일을 직관적으로 제시
+- **개인화 추천:** 투자자 성향(공격형/균형형/안정형)별 가중 랭킹으로 동일 데이터에서 차별화된 추천 제공
 - **운영 자동화:** 일일 파이프라인으로 수동 분석 작업 제거, 매일 최신 데이터 반영

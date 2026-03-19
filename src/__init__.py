@@ -12,6 +12,7 @@ from .multi_horizon_predictor import MultiHorizonPredictor
 from .industry_clustering import IndustryClusterer
 from .hyperparameter_tuning import GridSearchTuner
 from .shap_explainer import ShapExplainer
+from .investor_profiler import InvestorProfiler
 
 __all__ = [
     'load_data',
@@ -28,4 +29,5 @@ __all__ = [
     'IndustryClusterer',
     'GridSearchTuner',
     'ShapExplainer',
+    'InvestorProfiler',
 ]

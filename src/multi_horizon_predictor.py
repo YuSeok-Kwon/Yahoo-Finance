@@ -24,6 +24,12 @@ class MultiHorizonPredictor:
         '6m': 180,
         '1y': 365
     }
+
+    STRATEGY_GROUPS = {
+        '단타': ['1d', '3d'],
+        '스윙': ['1w', '1m'],
+        '장기투자': ['1q', '6m', '1y'],
+    }
     
     def __init__(
         self, 
@@ -294,3 +300,114 @@ class MultiHorizonPredictor:
         
         else:
             raise ValueError(f"알 수 없는 방법: {method}")
+
+    def aggregate_by_strategy_groups(
+        self,
+        multi_horizon_results: Dict,
+        top_k: int = None
+    ) -> Dict:
+        """
+        7개 호라이즌 결과를 3개 전략그룹(단타/스윙/장기투자)으로 병합
+
+        그룹 내 Voting 규칙:
+        - 단타(2개 호라이즌): union 포함, 2개 공통이면 우선순위 상승
+        - 스윙(2개 호라이즌): 동일
+        - 장기투자(3개 호라이즌): 2개 이상 공통이면 포함
+
+        Parameters:
+        -----------
+        multi_horizon_results : Dict
+            predict_all_horizons()의 반환값 (7개 호라이즌)
+        top_k : int, optional
+            그룹별 최종 선정할 섹터 수 (기본: self.top_k)
+
+        Returns:
+        --------
+        Dict : 3개 전략그룹 결과
+        """
+        from collections import Counter
+
+        if top_k is None:
+            top_k = self.top_k
+
+        strategy_results = {}
+
+        for group_name, horizons in self.STRATEGY_GROUPS.items():
+            # 그룹에 속하는 호라이즌 결과 수집
+            group_horizon_results = {
+                h: multi_horizon_results[h]
+                for h in horizons
+                if h in multi_horizon_results
+            }
+
+            if not group_horizon_results:
+                continue
+
+            n_horizons = len(group_horizon_results)
+
+            # 그룹 내 Voting: 섹터별 추천 횟수
+            sector_votes = Counter()
+            for result in group_horizon_results.values():
+                sector_votes.update(result['top_sectors'])
+
+            # 최소 투표 수 결정: 2개 호라이즌이면 1(union), 3개 호라이즌이면 2
+            min_votes = 2 if n_horizons >= 3 else 1
+
+            # 후보 섹터: min_votes 이상 추천된 섹터
+            candidate_sectors = [
+                sector for sector, votes in sector_votes.items()
+                if votes >= min_votes
+            ]
+
+            # 그룹 내 ranking_score 평균 계산
+            sector_avg_scores = {}
+            sector_avg_predictions = {}
+            sector_avg_confidences = {}
+
+            all_sectors_in_group = set()
+            for result in group_horizon_results.values():
+                all_sectors_in_group.update(result['ranking_scores'].keys())
+
+            for sector in all_sectors_in_group:
+                scores = []
+                preds = []
+                confs = []
+                for result in group_horizon_results.values():
+                    if sector in result['ranking_scores']:
+                        scores.append(result['ranking_scores'][sector])
+                    if sector in result['predictions']:
+                        preds.append(result['predictions'][sector])
+                    if sector in result['confidences']:
+                        confs.append(result['confidences'][sector])
+
+                if scores:
+                    sector_avg_scores[sector] = np.mean(scores)
+                if preds:
+                    sector_avg_predictions[sector] = np.mean(preds)
+                if confs:
+                    sector_avg_confidences[sector] = np.mean(confs)
+
+            # Top-K 선정: 후보 섹터 중 평균 ranking_score 내림차순
+            candidate_with_scores = [
+                (sector, sector_avg_scores.get(sector, 0.0))
+                for sector in candidate_sectors
+            ]
+            candidate_with_scores.sort(key=lambda x: x[1], reverse=True)
+            top_sectors = [s[0] for s in candidate_with_scores[:top_k]]
+
+            # 대표 horizon_days: 그룹 내 최대값
+            horizon_days = max(
+                result['horizon_days']
+                for result in group_horizon_results.values()
+            )
+
+            strategy_results[group_name] = {
+                'top_sectors': top_sectors,
+                'predictions': sector_avg_predictions,
+                'confidences': sector_avg_confidences,
+                'ranking_scores': sector_avg_scores,
+                'source_horizons': list(group_horizon_results.keys()),
+                'horizon_days': horizon_days,
+            }
+
+        return strategy_results
